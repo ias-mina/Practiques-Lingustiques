@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Pràctiques Lingüístiques VxL - Barcelona</title>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Fraunces:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -415,16 +417,7 @@
     </div><!-- end listView -->
 
     <div id="mapView" class="map-view">
-        <iframe
-            class="map-frame"
-            src="https://www.google.com/maps/d/embed?mid=1_KML_PLACEHOLDER_&ehbc=2E312F"
-            allowfullscreen
-            loading="lazy"
-            referrerpolicy="no-referrer-when-downgrade"
-        ></iframe>
-        <div style="padding:1rem; background:var(--district-bg); font-size:0.8125rem; color:var(--text-secondary); border-top:1px solid var(--border);">
-            💡 Fes clic en qualsevol pin del mapa per veure el nom i l'adreça de l'establiment.
-        </div>
+        <div id="leafletMap" style="width:100%;height:100%;"></div>
     </div>
 
     <script>
@@ -825,6 +818,11 @@
                 mapView.classList.add('active');
                 tabMap.classList.add('active');
                 tabList.classList.remove('active');
+                // Init Leaflet map on first open
+                setTimeout(() => {
+                    initMap();
+                    if (leafletMap) leafletMap.invalidateSize();
+                }, 50);
             } else {
                 listView.style.display = 'block';
                 mapView.classList.remove('active');
@@ -965,6 +963,123 @@
 
         // Initialize
         renderEstablishments();
+
+        // District colors for map markers
+        const districtColors = {
+            "Ciutat Vella": "#e53935",
+            "Eixample": "#8e24aa",
+            "Gràcia": "#f57c00",
+            "Horta-Guinardó": "#00897b",
+            "Les Corts": "#1e88e5",
+            "Nou Barris": "#43a047",
+            "Sant Andreu": "#d81b60",
+            "Sant Martí": "#3949ab",
+            "Sants-Montjuïc": "#c0ca33",
+            "Sarrià - Sant Gervasi": "#6d4c41"
+        };
+
+        let leafletMap = null;
+
+        function initMap() {
+            if (leafletMap) return; // already initialized
+
+            leafletMap = L.map('leafletMap', { zoomControl: true }).setView([41.3874, 2.1686], 12);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+                maxZoom: 19
+            }).addTo(leafletMap);
+
+            Object.entries(establishments).forEach(([district, estabs]) => {
+                const color = districtColors[district] || '#d84315';
+
+                estabs.forEach(estab => {
+                    if (!estab.lat || !estab.lng) return;
+
+                    const mapsUrl = generateMapsUrl(estab.lat, estab.lng, estab.name, estab.address);
+
+                    const icon = L.divIcon({
+                        className: '',
+                        html: `<div style="
+                            width:18px;height:18px;
+                            border-radius:50%;
+                            background:${color};
+                            border:3px solid white;
+                            box-shadow:0 2px 8px rgba(0,0,0,0.45), 0 0 0 2px ${color}55;
+                        "></div>`,
+                        iconSize: [18, 18],
+                        iconAnchor: [9, 9],
+                        popupAnchor: [0, -12]
+                    });
+
+                    const marker = L.marker([estab.lat, estab.lng], { icon }).addTo(leafletMap);
+
+                    const notesHtml = estab.notes
+                        ? `<div style="margin-top:6px;font-size:0.75rem;color:#d84315;padding:4px 6px;background:#fef8f5;border-left:3px solid #d84315;border-radius:3px;">${estab.notes}</div>`
+                        : '';
+
+                    marker.bindPopup(`
+                        <div style="font-family:'DM Sans',sans-serif;min-width:180px;">
+                            <div style="font-weight:700;font-size:0.9rem;margin-bottom:3px;">${estab.name}</div>
+                            <div style="font-size:0.8rem;color:#666;margin-bottom:2px;">${estab.address}</div>
+                            <div style="font-size:0.75rem;color:#999;margin-bottom:8px;">${estab.area} · <span style="color:${color};font-weight:600;">${district}</span></div>
+                            ${notesHtml}
+                            <a href="${mapsUrl}" target="_blank" style="
+                                display:inline-block;margin-top:8px;padding:5px 10px;
+                                background:#d84315;color:white;border-radius:6px;
+                                text-decoration:none;font-size:0.8rem;font-weight:600;
+                            ">Navegar 🧭</a>
+                        </div>
+                    `, { maxWidth: 260 });
+                });
+            });
+
+            // Legend
+        const districtCenters = {
+            "Ciutat Vella":        [41.3808, 2.1810],
+            "Eixample":            [41.3916, 2.1645],
+            "Gràcia":              [41.4101, 2.1524],
+            "Horta-Guinardó":      [41.4291, 2.1505],
+            "Les Corts":           [41.3870, 2.1182],
+            "Nou Barris":          [41.4462, 2.1751],
+            "Sant Andreu":         [41.4351, 2.1933],
+            "Sant Martí":          [41.4076, 2.2012],
+            "Sants-Montjuïc":      [41.3499, 2.1449],
+            "Sarrià - Sant Gervasi":[41.4128, 2.1061]
+        };
+
+            const legend = L.control({ position: 'bottomleft' });
+            legend.onAdd = function() {
+                const div = L.DomUtil.create('div');
+                div.style.cssText = 'background:white;padding:10px 14px;border-radius:10px;box-shadow:0 2px 12px rgba(0,0,0,0.25);font-family:DM Sans,sans-serif;font-size:12px;line-height:1.4;color:#1a1614;max-width:210px;';
+                div.innerHTML = '<div style="font-weight:700;margin-bottom:7px;font-size:12px;color:#1a1614;">Districtes · toca per fer zoom</div>' +
+                    Object.entries(districtColors).map(([d, c]) =>
+                    `<div data-district="${d}" style="display:flex;align-items:center;gap:7px;margin-bottom:5px;cursor:pointer;padding:3px 5px;border-radius:6px;transition:background 0.15s;" 
+                          onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='transparent'">
+                        <div style="width:14px;height:14px;border-radius:50%;background:${c};flex-shrink:0;border:2.5px solid white;box-shadow:0 1px 4px rgba(0,0,0,0.35), 0 0 0 1.5px ${c}55;"></div>
+                        <span style="color:#1a1614;white-space:nowrap;font-weight:500;">${d}</span>
+                    </div>`
+                ).join('');
+
+                // Add click handlers after DOM insertion
+                setTimeout(() => {
+                    div.querySelectorAll('[data-district]').forEach(el => {
+                        el.addEventListener('click', () => {
+                            const name = el.dataset.district;
+                            const center = districtCenters[name];
+                            if (center && leafletMap) {
+                                leafletMap.flyTo(center, 14, { duration: 1.2 });
+                            }
+                        });
+                    });
+                }, 0);
+
+                return div;
+            };
+            legend.addTo(leafletMap);
+        }
+
+
     </script>
 </body>
 </html>
